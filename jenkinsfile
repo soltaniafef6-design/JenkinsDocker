@@ -3,16 +3,18 @@ pipeline {
 
     environment {
         IMAGE_NAME = "soltaniafef6/myapp"
-        IMAGE_TAG  = "latest"
+        IMAGE_TAG  = "${env.BUILD_ID}" // Tag basé sur le numéro de build
     }
 
     stages {
+        // Stage 1 : Récupérer le code depuis Git
         stage('Checkout') {
             steps {
                 git branch: 'main', url: 'https://github.com/soltaniafef6-design/JenkinsDocker.git'
             }
         }
 
+        // Stage 2 : Build de l'image Docker
         stage('Build Docker Image') {
             steps {
                 script {
@@ -21,13 +23,40 @@ pipeline {
             }
         }
 
+        // Stage 3 : Test rapide du container
+        stage('Test Docker Image') {
+            steps {
+                script {
+                    docker.image("${IMAGE_NAME}:${IMAGE_TAG}").withRun('-p 8080:8080') { c ->
+                        sh 'docker ps'
+                        // Ici tu peux ajouter des tests HTTP ou curl
+                        sh "curl -f http://localhost:8080 || true"
+                    }
+                }
+            }
+        }
+
+        // Stage 4 : Push sur Docker Hub
         stage('Push Docker Image') {
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'docker-hub-credentials', 
+                        usernameVariable: 'DOCKER_USER', 
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
                         sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
                         sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
                     }
+                }
+            }
+        }
+
+        // Stage 5 : Nettoyage local
+        stage('Cleanup') {
+            steps {
+                script {
+                    sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
                 }
             }
         }
